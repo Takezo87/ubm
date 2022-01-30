@@ -20,28 +20,6 @@ def window_dict(df, win_len=4):
 
 
 
-def precalc_window_idx(df, groups, row_idx, window_len=4):
-    investment_id, time_id = df.iloc[row_idx][['investment_id', 'time_id']]
-    df_sub = df.loc[groups[investment_id]]
-    # idx = df_sub.loc[df_sub['time_id']==time_id].index.values[0]
-    idx_loc = df_sub.index.get_loc(row_idx)
-    # print(idx_loc)
-    return df_sub.iloc[max(idx_loc-window_len+1, 0):idx_loc+1].index.values
-
-# def get_window_data(df, groups, row_idx, window_len=4):
-#     investment_id, time_id = df.iloc[row_idx][['investment_id', 'time_id']]
-#     df_sub = df.loc[groups[investment_id]]
-#     # idx = df_sub.loc[df_sub['time_id']==time_id].index.values[0]
-#     idx_loc = df_sub.index.get_loc(row_idx)
-#     # print(idx_loc)
-#     vals = df_sub.iloc[max(idx_loc-window_len+1, 0):idx_loc+1][feature_cols()].values
-#     n_rows = vals.shape[0]
-#     if n_rows < window_len:
-#         # vals = np.pad(vals, ((window_len-n_rows,0), (0, 0)), mode='constant',
-#             # constant_values = (-1, -1))
-#         vals = np.pad(vals, ((window_len-n_rows,0), (0, 0)), mode='mean')
-#     return vals
-
 def prepend_slice(ids, df, win_len):
     df_ids = df.loc[df.investment_id.isin(ids)]
     groups = df_ids.groupby('investment_id').groups
@@ -143,23 +121,6 @@ class LinBnDrop(nn.Sequential):
         layers = lin+layers if lin_first else layers+lin
         super().__init__(*layers)
 
-class MLP(nn.Module):
-
-    def __init__(self, c_in, seq_len, dropout=.2, act=nn.GELU()):
-        super().__init__()
-        self.layer1 = LinBnDrop(c_in * seq_len, 500, p=dropout, act=act)
-        self.layer2 = LinBnDrop(500, 500, p=dropout, act=act)
-        self.layer3 = LinBnDrop(500, 500, p=dropout, act=act)
-        self.layer4 = LinBnDrop(500, 1, p=dropout)
-
-    def forward(self, x):
-        x = x.reshape(x.shape[0], -1)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-
-        return x
 
 def predict(model, test_dl, device):
     model.to(device)
