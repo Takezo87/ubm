@@ -6,8 +6,8 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from scipy.stats import pearsonr
 
-from utils import NUM_FEATURES, feature_cols, idx_cols, load_df
-from utils_2 import WinDataset, TimeDataset
+from data import *
+
 
 
 WIN_LEN = 4
@@ -42,13 +42,16 @@ class MLP(nn.Module):
         x = x.reshape(x.shape[0], -1)
         return self.layers(x)
 
+def pearson_coef(data):
+    return data.corr()['target']['preds']
 
 class LitModel(pl.LightningModule):
     
-    def __init__(self, model):
+    def __init__(self, model, df_valid):
         super().__init__()
         self.model = model
         self.loss_fn = F.mse_loss
+        self.df_valid = df_valid
 
     def forward(self, x):
         return self.model(x)
@@ -73,7 +76,17 @@ class LitModel(pl.LightningModule):
                 yb.flatten().detach().cpu().numpy())
         self.log('val_loss', loss, on_epoch=True, prog_bar=True)
         self.log('pearson', pearson[0], on_epoch=True, prog_bar=True)
+        return logits.view(xb.size(0),-1)
 
-    def predict_step(self, batch, batch_idx, dataloader_idx=None):
-        xb, yb = batch
-        return self.model(xb).squeeze()
+    def validation_epoch_end(self, outputs):
+
+        preds = torch.cat(outputs).squeeze()
+        if preds.shape[0] == self.df_valid.shape[0]:
+            self.df_valid['preds'] = preds.detach().cpu().numpy()
+            metric = np.mean(self.df_valid[['time_id', 'target', 'preds']].groupby('time_id').apply(pearson_coef))
+            
+            self.log('pearson_full', metric, prog_bar=True)
+
+    # def predict_step(self, batch, batch_idx, dataloader_idx=None):
+    #     xb, yb = batch
+    #     return self(xb).squeeze()

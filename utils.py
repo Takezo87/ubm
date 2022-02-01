@@ -11,19 +11,20 @@ from scipy.stats import pearsonr
 # from tsai.all import *
 from tqdm import tqdm
 
-NUM_FEATURES = 20
+from data import *
 
-def feature_cols(n_features=NUM_FEATURES):
-    col_subset = [f'f_{i}' for i in range(0, n_features)]
-    return col_subset
 
-def idx_cols():
-    col_subset = ['time_id','investment_id']
-    return col_subset
+def get_experiment_dsets(dset_type = WinDataset, small=True):
+    df = load_df(idx_cols(), feature_cols()) 
+    if small:
+        df = df.loc[df.investment_id<=100]
+    df_train = df.loc[df.time_id<=1000]
+    df_valid = df.loc[df.time_id>1000]
+    df_train.reset_index(drop=True, inplace=True)
+    df_valid.reset_index(drop=True, inplace=True)
 
-def load_df(idx_cols, feature_cols, target='target', fn='train_low_mem.parquet'):
-    train = pd.read_parquet(fn, columns=idx_cols+feature_cols+['target'])
-    return train
+    return dset_type(df_train), dset_type(df_valid), dset_type(df_valid.drop(columns='target'))
+    
 
 
     #     max_len, n_feats = sigs[0].size()
