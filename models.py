@@ -10,7 +10,7 @@ from data import *
 
 
 
-WIN_LEN = 4
+# WIN_LEN = 4
 # NUM_FEATURES = 20
 
 class LinBnDrop(nn.Sequential):

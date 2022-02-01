@@ -24,6 +24,14 @@ def get_experiment_dsets(dset_type = WinDataset, small=True):
     df_valid.reset_index(drop=True, inplace=True)
 
     return dset_type(df_train), dset_type(df_valid), dset_type(df_valid.drop(columns='target'))
+
+
+def pearson_loss(x, y):
+    xd = x - x.mean()
+    yd = y - y.mean()
+    nom = (xd*yd).sum()
+    denom = ((xd**2).sum() * (yd**2).sum()).sqrt()
+    return 1 - nom / denom
     
 
 
