@@ -8,10 +8,10 @@ from tqdm import tqdm
 import pytorch_lightning as pl
 
 
-NUM_FEATURES = 20
+NUM_FEATURES_DEFAULT = 20
 
 
-def feature_cols(n_features=NUM_FEATURES):
+def feature_cols(n_features=NUM_FEATURES_DEFAULT):
     col_subset = [f"f_{i}" for i in range(0, n_features)]
     return col_subset
 
@@ -261,12 +261,15 @@ class TimeDS(Dataset):
 
 
 class WinDM(pl.LightningDataModule):
-    def __init__(self, df, win_len=1, split_time_id=1000, dset_type=WinDS):
+    def __init__(self, df, num_features=300, win_len=1, split_time_id=1000, dset_type=WinDS,
+            batch_size=256):
         self.df = df
         self.win_len = win_len
-        self.feature_cols = feature_cols()
+        self.num_features=num_features
+        self.feature_cols = feature_cols(num_features)
         self.split_time_id = split_time_id
         self.dset_type = dset_type
+        self.batch_size=batch_size
 
     def setup(self):
         self.features = self.df[self.feature_cols].values
@@ -307,7 +310,7 @@ class WinDM(pl.LightningDataModule):
     def train_dataloader(self):
         return DataLoader(
             self.train_dset,
-            batch_size=256,
+            batch_size=self.batch_size,
             shuffle=True,
             pin_memory=True,
             num_workers=4,
@@ -316,7 +319,7 @@ class WinDM(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(
             self.valid_dset,
-            batch_size=256,
+            batch_size=self.batch_size(),
             shuffle=False,
             pin_memory=True,
             num_workers=4,

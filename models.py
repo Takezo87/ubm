@@ -25,15 +25,15 @@ class LinBnDrop(nn.Sequential):
 
 class MLP(nn.Module):
 
-    def __init__(self, c_in, seq_len, n_hidden = [512, 256, 128, 64],
-            dropout=[.2, .2 ,.2, .2], act=nn.GELU()):
+    def __init__(self, c_in, seq_len, n_hidden = [256, 128, 64],
+            dropout=[.2, .2 ,.2, .2], act=nn.ReLU()):
         super().__init__()
-        layers = []
+        layers = [nn.BatchNorm1d(c_in*seq_len)]
         dims_in = [c_in*seq_len] + n_hidden[:-1]
 
         for n_in, n_out, drop in zip(dims_in, n_hidden, dropout):
-            layers.append(LinBnDrop(n_in, n_out, p=drop, act=act))
-        layers.append(LinBnDrop(n_hidden[-1], 1, p=dropout[-1]))
+            layers.append(LinBnDrop(n_in, n_out, p=drop, act=act, lin_first=True))
+        layers.append(nn.Linear(n_hidden[-1], 1))
         self.layers = nn.Sequential(*layers)
 
 
