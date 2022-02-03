@@ -1,3 +1,6 @@
+import argparse
+import gc
+
 import pandas as pd
 import numpy as np
 import torch
@@ -31,8 +34,16 @@ def window_dict(df, win_len=4):
     d = {}
     for group in tqdm(groups.values()):
         for i, idx in enumerate(group):
-            d[idx] = group[max(0, i - win_len + 1) : i + 1]
+            d[idx] = np.array(group[max(0, i - win_len + 1) : i + 1])
     return d
+
+def get_win_features(features, d, i, win_len=4):
+    win_features = features[d[i]]
+    if win_features.shape[0] < win_len:
+        win_features = np.pad(
+            win_features, ((win_len - win_features.shape[0], 0), (0, 0)), mode="mean"
+        )
+    return win_features
 
 
 def prepend_slice(ids, df, win_len):
@@ -259,37 +270,47 @@ class TimeDS(Dataset):
     def __len__(self):
         return len(self.idcs)
 
+def default_args():
+    args = argparse.Namespace(df_path='train_low_mem.parquet', win_len=4, dset_type=WinDS, num_features=20,
+            split_time_id=1000, batch_size=256, num_workers=0)
+    return args
 
 class WinDM(pl.LightningDataModule):
-    def __init__(self, df, num_features=300, win_len=1, split_time_id=1000, dset_type=WinDS,
-            batch_size=256):
-        self.df = df
-        self.win_len = win_len
-        self.num_features=num_features
-        self.feature_cols = feature_cols(num_features)
-        self.split_time_id = split_time_id
-        self.dset_type = dset_type
-        self.batch_size=batch_size
+    def __init__(self, args:argparse.Namespace):
+        super().__init__()
+        args = vars(args) if args is not None else None
+
+        self.num_features = args.get('num_features')
+        self.df_path = args.get('df_path')
+        self.win_len = args.get('win_len')
+        self.dset_type = args.get('dset_type')
+        self.split_time_id = args.get('split_time_id')
+        self.batch_size = args.get('batch_size')
+        self.num_workers = args.get('num_workers')
+
 
     def setup(self):
-        self.features = self.df[self.feature_cols].values.astype('float32')
-        if 'target' in self.df.columns:
-            self.targets = self.df["target"].values
+        self.feature_cols = feature_cols(self.num_features)
+        df = load_df(idx_cols(), self.feature_cols)
+        # self.df = df
+        self.features = df[self.feature_cols].values.astype('float32')
+        if 'target' in df.columns:
+            self.targets = df["target"].values
         else:
             self.targets = None
         if self.win_len>1:
-            self.win_dict = window_dict(self.df, self.win_len)
+            self.win_dict = window_dict(df, self.win_len)
         else:
-            self.win_dict = {k:k for k in self.df.index}
-        self.train_idcs = self.df.loc[self.df.time_id <= self.split_time_id].index
-        self.val_idcs = self.df.loc[self.df.time_id > self.split_time_id].index
+            self.win_dict = {k:k for k in df.index}
+        self.train_idcs = df.loc[df.time_id <= self.split_time_id].index
+        self.val_idcs = df.loc[df.time_id > self.split_time_id].index
         self.test_idcs = self.val_idcs
 
         # time aggregate mapping
         if self.dset_type == TimeDS: 
-            time_df = self.df.groupby("time_id")[self.feature_cols].mean()
-            self.time_ids = self.df.time_id.values
-            self.time_map = {k: v for v, k in enumerate(self.df.time_id.unique())}
+            time_df = df.groupby("time_id")[self.feature_cols].mean()
+            self.time_ids = df.time_id.values
+            self.time_map = {k: v for v, k in enumerate(df.time_id.unique())}
             self.time_features = time_df.astype("float32").values
         else:
             self.time_ids, self.time_map, self.time_features = None, None, None
@@ -326,13 +347,15 @@ class WinDM(pl.LightningDataModule):
             win_len=self.win_len,
         )
 
+        gc.collect()
+
     def train_dataloader(self):
         return DataLoader(
             self.train_dset,
             batch_size=self.batch_size,
             shuffle=True,
-            pin_memory=True,
-            num_workers=4,
+            pin_memory=False,
+            num_workers=self.num_workers,
         )
 
     def val_dataloader(self):
@@ -340,14 +363,14 @@ class WinDM(pl.LightningDataModule):
             self.valid_dset,
             batch_size=self.batch_size,
             shuffle=False,
-            pin_memory=True,
-            num_workers=4,
+            pin_memory=False,
+            num_workers=self.num_workers,
         )
     def test_dataloader(self):
         return DataLoader(
             self.test_dset,
             batch_size=self.batch_size,
             shuffle=False,
-            pin_memory=True,
-            num_workers=4,
+            pin_memory=False,
+            num_workers=self.num_workers,
         )
