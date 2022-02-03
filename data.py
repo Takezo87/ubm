@@ -24,8 +24,12 @@ def idx_cols():
     return col_subset
 
 
-def load_df(idx_cols, feature_cols, target="target", fn="train_low_mem.parquet"):
+def load_df(idx_cols, feature_cols, target="target", fn="train_low_mem.parquet", 
+        small=False):
     train = pd.read_parquet(fn, columns=idx_cols + feature_cols + ["target"])
+    if small:
+        train = train.loc[train.investment_id<=100]
+        train.reset_index(inplace=True, drop=True)
     return train
 
 
@@ -271,8 +275,8 @@ class TimeDS(Dataset):
         return len(self.idcs)
 
 def default_args():
-    args = argparse.Namespace(df_path='train_low_mem.parquet', win_len=4, dset_type=WinDS, num_features=20,
-            split_time_id=1000, batch_size=256, num_workers=0)
+    args = argparse.Namespace(df_path='train_low_mem.parquet', win_len=1, dset_type=WinDS, num_features=20,
+            split_time_id=1000, batch_size=256, num_workers=0, small_df=True)
     return args
 
 class WinDM(pl.LightningDataModule):
@@ -287,11 +291,12 @@ class WinDM(pl.LightningDataModule):
         self.split_time_id = args.get('split_time_id')
         self.batch_size = args.get('batch_size')
         self.num_workers = args.get('num_workers')
+        self.small_df = args.get('small_df')
 
 
     def setup(self):
         self.feature_cols = feature_cols(self.num_features)
-        df = load_df(idx_cols(), self.feature_cols)
+        df = load_df(idx_cols(), self.feature_cols, fn=self.df_path, small=self.small_df)
         # self.df = df
         self.features = df[self.feature_cols].values.astype('float32')
         if 'target' in df.columns:
