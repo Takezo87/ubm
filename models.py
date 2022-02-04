@@ -58,15 +58,15 @@ class MLP(nn.Module):
         layers.append(nn.Linear(n_hidden[-1], c_out))
         self.layers = nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x, time):
         # print(x)
         # if self.autoencoder is not None:
         #     encoded = self.autoencoder.encoder(x)
         #     x = torch.cat([x, encoded])
-        if len(x.shape) == 2:
-            x = x.unsqueeze(-2)
+        if len(time.shape) == 2:
+            time = time.unsqueeze(-2)
         # print(x.shape)
-        features = self.feature_extractor(x.permute(0, -1, -2))
+        features = self.feature_extractor(time.permute(0, -1, -2))
         x = x.reshape(x.shape[0], -1)
         features = features.reshape(features.shape[0], -1)
         # print(features.shape)
@@ -77,6 +77,53 @@ class MLP(nn.Module):
         return self.layers(x)
 
 
+class MLP_Time(nn.Module):
+    def __init__(
+        self,
+        c_in,
+        seq_len,
+        time_win_len,
+        c_out=1,
+        n_hidden=[256, 128, 64],
+        dropout=[0.2, 0.2, 0.2, 0.2],
+        act=nn.ReLU(),
+        autoencoder=None,
+        feature_dim = 64
+    ):
+
+        super().__init__()
+        self.autoencoder = autoencoder
+        dim_autoencoder = 0 if self.autoencoder is None else autoencoder.bottleneck_dim
+        self.feature_dim = feature_dim
+        self.feature_extractor = nn.Conv1d(c_in, self.feature_dim, 1)
+
+        dims_in = [c_in * seq_len + dim_autoencoder + self.feature_dim*time_win_len] + n_hidden[:-1]
+        
+
+        layers = [nn.BatchNorm1d(dims_in[0])]
+
+        for n_in, n_out, drop in zip(dims_in, n_hidden, dropout):
+            layers.append(LinBnDrop(n_in, n_out, p=drop, act=act, lin_first=True))
+        layers.append(nn.Linear(n_hidden[-1], c_out))
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, x, time):
+        # print(x)
+        # if self.autoencoder is not None:
+        #     encoded = self.autoencoder.encoder(x)
+        #     x = torch.cat([x, encoded])
+        if len(time.shape) == 2:
+            time = time.unsqueeze(-2)
+        # print(x.shape, time.shape)
+        features = self.feature_extractor(time.permute(0, -1, -2))
+        x = x.reshape(x.shape[0], -1)
+        features = features.reshape(features.shape[0], -1)
+        # print(features.shape)
+        # return features, x
+        x = torch.cat([x, features], 1)
+        # print(x.shape)
+
+        return self.layers(x)
 class AutoEncoder(nn.Module):
     def __init__(
         self,
@@ -137,22 +184,22 @@ class LitModel(pl.LightningModule):
         self.df_valid = args.get("df_valid")  # for time_id pearson corr
         self.lr = args.get("lr")  # for time_id pearson corr
 
-    def forward(self, x):
-        return self.model(x)
+    def forward(self, x, t):
+        return self.model(x, t)
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.lr)
 
     def training_step(self, batch, batch_idx):
-        xb, yb = batch
-        logits = self.model(xb)
+        xb, tb, yb = batch
+        logits = self.model(xb, tb)
         loss = self.loss_fn(logits.flatten(), yb)
         self.log("train_loss", loss, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        xb, yb = batch
-        logits = self.model(xb)
+        xb, tb, yb = batch
+        logits = self.model(xb, tb)
         loss = self.loss_fn(logits.flatten(), yb)
         pearson = pearsonr(
             logits.flatten().detach().cpu().numpy(), yb.flatten().detach().cpu().numpy()

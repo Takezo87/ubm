@@ -41,13 +41,6 @@ def window_dict(df, win_len=4):
             d[idx] = np.array(group[max(0, i - win_len + 1) : i + 1])
     return d
 
-def get_win_features(features, d, i, win_len=4):
-    win_features = features[d[i]]
-    if win_features.shape[0] < win_len:
-        win_features = np.pad(
-            win_features, ((win_len - win_features.shape[0], 0), (0, 0)), mode="mean"
-        )
-    return win_features
 
 
 def prepend_slice(ids, df, win_len):
@@ -234,49 +227,65 @@ class WinDS(Dataset):
     def __len__(self):
         return len(self.idcs)
 
+def get_win_features(features, win_dict, i, win_len=4):
+    win_features = features[win_dict[i]]
+    if win_features.shape[0] < win_len:
+        win_features = np.pad(
+            win_features, ((win_len - win_features.shape[0], 0), (0, 0)), mode="mean"
+        )
+    return win_features
+
+def get_time_features(time_features, time_ids, time_map, i, time_win_len=1):
+    time_idx = time_map[time_ids[i]]
+    time_win_features = time_features[max(0, time_idx-time_win_len+1):time_idx+1]
+    if time_win_features.shape[0] < time_win_len:
+        time_win_features = np.pad(
+            time_win_features, ((time_win_len - time_win_features.shape[0], 0), (0, 0)), mode="mean"
+        )
+    return time_win_features
 
 class TimeDS(Dataset):
     def __init__(
         self,
         features,
+        time_features,
         idcs,
         win_dict,
-        time_features,
         time_ids,
         time_map,
         targets=None,
         win_len=1,
+        time_win_len=1,
         **kwargs,
     ):
         self.features, self.time_features, self.targets = features, time_features, targets
-        self.idcs, self.win_dict, self.win_len = idcs, win_dict, win_len
-        self.time_ids, self.time_map = time_ids, time_map
+        self.idcs = idcs
+        self.win_dict, self.win_len = win_dict, win_len
+        self.time_ids, self.time_map, self.time_win_len = time_ids, time_map, time_win_len
 
     def __getitem__(self, i):
         df_idx = self.idcs[i]
         # print(df_idx)
-        features = self.features[self.win_dict[df_idx]]
-        time_features = self.time_features[[self.time_map[self.time_ids[df_idx]]]]
+        features = get_win_features(self.features, self.win_dict, df_idx, self.win_len)
+        #time_step aggregated features
+
+        time_features = get_time_features(self.time_features, self.time_ids, self.time_map,
+                df_idx, self.time_win_len)
         # print(features)
-        if features.shape[0] < self.win_len:
-            features = np.pad(
-                features, ((self.win_len - features.shape[0], 0), (0, 0)), mode="mean"
-            )
         # print(time_features)
         # features = np.concatenate([features, time_features])
-        features_full = np.concatenate([features, time_features])
+        # features_full = np.concatenate([features, time_features])
         if self.targets is not None:
             target = self.targets[df_idx]
-            return features_full, target
+            return features, time_features, target
         else:
-            return features_full
+            return features, time_features
 
     def __len__(self):
         return len(self.idcs)
 
 def default_args():
-    args = argparse.Namespace(df_path='train_low_mem.parquet', win_len=1, dset_type=WinDS, num_features=20,
-            split_time_id=1000, batch_size=256, num_workers=0, small_df=True)
+    args = argparse.Namespace(df_path='train_low_mem.parquet', win_len=1, time_win_len=4, dset_type='time_ds', num_features=20, split_time_id=1000, batch_size=256, num_workers=0, small_df=True)
     return args
 
 class WinDM(pl.LightningDataModule):
@@ -287,6 +296,7 @@ class WinDM(pl.LightningDataModule):
         self.num_features = args.get('num_features')
         self.df_path = args.get('df_path')
         self.win_len = args.get('win_len')
+        self.time_win_len = args.get('time_win_len')
         self.dset_type = args.get('dset_type')
         self.split_time_id = args.get('split_time_id')
         self.batch_size = args.get('batch_size')
@@ -312,7 +322,9 @@ class WinDM(pl.LightningDataModule):
         self.test_idcs = self.val_idcs
 
         # time aggregate mapping
-        if self.dset_type == TimeDS: 
+        print(self.dset_type)
+        if self.dset_type == 'time_ds': 
+            print('time ds')
             time_df = df.groupby("time_id")[self.feature_cols].mean()
             self.time_ids = df.time_id.values
             self.time_map = {k: v for v, k in enumerate(df.time_id.unique())}
@@ -321,35 +333,39 @@ class WinDM(pl.LightningDataModule):
             self.time_ids, self.time_map, self.time_features = None, None, None
         
 
-        self.train_dset = self.dset_type(
+        dset_cls = TimeDS if self.dset_type=='time_ds' else WinDS
+        self.train_dset = dset_cls(
             self.features,
+            self.time_features,
             self.train_idcs,
             self.win_dict,
-            time_features=self.time_features,
             time_ids=self.time_ids,
             time_map=self.time_map,
             targets=self.targets,
             win_len=self.win_len,
+            time_win_len=self.time_win_len,
         )
-        self.valid_dset = self.dset_type(
+        self.valid_dset = dset_cls(
             self.features,
+            self.time_features,
             self.val_idcs,
             self.win_dict,
-            time_features=self.time_features,
             time_ids=self.time_ids,
             time_map=self.time_map,
             targets=self.targets,
             win_len=self.win_len,
+            time_win_len=self.time_win_len,
         )
-        self.test_dset = self.dset_type(
+        self.test_dset = dset_cls(
             self.features,
+            self.time_features,
             self.val_idcs,
             self.win_dict,
-            time_features=self.time_features,
             time_ids=self.time_ids,
             time_map=self.time_map,
             targets=None,
             win_len=self.win_len,
+            time_win_len=self.time_win_len,
         )
 
         gc.collect()
