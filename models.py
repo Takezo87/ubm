@@ -88,14 +88,15 @@ class MLP_Time(nn.Module):
         dropout=[0.2, 0.2, 0.2, 0.2],
         act=nn.ReLU(),
         autoencoder=None,
-        feature_dim = 64
+        feature_dim = 64,
+        kernel_size=3
     ):
 
         super().__init__()
         self.autoencoder = autoencoder
         dim_autoencoder = 0 if self.autoencoder is None else autoencoder.bottleneck_dim
         self.feature_dim = feature_dim
-        self.feature_extractor = nn.Conv1d(c_in, self.feature_dim, 1)
+        self.feature_extractor = nn.Conv1d(c_in, self.feature_dim, kernel_size, padding='same')
 
         dims_in = [c_in * seq_len + dim_autoencoder + self.feature_dim*time_win_len] + n_hidden[:-1]
         
@@ -124,6 +125,7 @@ class MLP_Time(nn.Module):
         # print(x.shape)
 
         return self.layers(x)
+
 class AutoEncoder(nn.Module):
     def __init__(
         self,
