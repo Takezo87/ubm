@@ -77,6 +77,23 @@ class MLP(nn.Module):
         return self.layers(x)
 
 
+class Extractor(nn.Module):
+    def __init__(self, c_in, feature_dim, kernel_size, kernel_size_pool=None):
+        super().__init__()
+        self.conv = nn.Conv1d(c_in, feature_dim, kernel_size, padding='same')
+        self.pool = None
+        if kernel_size_pool > 1:
+            self.pool = nn.MaxPool1d(kernel_size_pool)
+
+    def forward(self, x):
+        x = self.conv(x)
+        if self.pool is not None:
+            x = self.pool(F.relu(x))
+        return x
+
+
+
+
 class MLP_Time(nn.Module):
     def __init__(
         self,
@@ -89,18 +106,19 @@ class MLP_Time(nn.Module):
         act=nn.ReLU(),
         autoencoder=None,
         feature_dim = 64,
-        kernel_size=3
+        kernel_size=3,
+        kernel_size_pool=1
     ):
 
         super().__init__()
         self.autoencoder = autoencoder
         dim_autoencoder = 0 if self.autoencoder is None else autoencoder.bottleneck_dim
         self.feature_dim = feature_dim
-        self.feature_extractor = nn.Conv1d(c_in, self.feature_dim, kernel_size, padding='same')
+        # self.feature_extractor = nn.Conv1d(c_in, self.feature_dim, kernel_size, padding='same')
+        self.feature_extractor = Extractor(c_in, self.feature_dim, kernel_size, kernel_size_pool)
 
-        dims_in = [c_in * seq_len + dim_autoencoder + self.feature_dim*time_win_len] + n_hidden[:-1]
+        dims_in = [c_in * seq_len + dim_autoencoder + self.feature_dim*(time_win_len//kernel_size_pool)] + n_hidden[:-1]
         
-
         layers = [nn.BatchNorm1d(dims_in[0])]
 
         for n_in, n_out, drop in zip(dims_in, n_hidden, dropout):
