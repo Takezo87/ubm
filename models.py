@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributions.beta import Beta
 
 import pytorch_lightning as pl
 from scipy.stats import pearsonr
@@ -191,7 +192,32 @@ def pearson_coef(data):
 
 
 def default_lm_args():
-    return argparse.Namespace(loss_fn=F.mse_loss, lr=1e-3)
+    return argparse.Namespace(loss_fn=weighted_mse_loss, lr=1e-3, alpha=.4)
+
+
+def weighted_mse_loss(logits, yb, weights):
+    if weights is None:
+        return F.mse_loss(logits, yb)
+    return (weights * (logits - yb) ** 2).mean()
+
+def unsqueeze(x, dim=-1, n=1):
+    "Same as `torch.unsqueeze` but can add `n` dims"
+    for _ in range(n): x = x.unsqueeze(dim)
+    return x
+
+def mixup_batch(batch, alpha, device='cuda'):
+    xb, tb, yb = batch
+    bs = yb.shape[0]
+    shuffle = torch.randperm(bs).to(device)
+    distrib = Beta(alpha, alpha)
+    lam = distrib.sample((bs,)).to(device)
+    batch_mixed = {}
+    xb_mixed = torch.lerp(xb, xb[shuffle], weight=unsqueeze(lam, n=2))
+    tb_mixed = torch.lerp(tb, tb[shuffle], weight=unsqueeze(lam, n=2))
+    yb_1 = yb
+    yb_2 = yb[shuffle]
+    return xb_mixed, tb_mixed, yb_1, yb_2, lam
+
 
 
 class LitModel(pl.LightningModule):
@@ -203,6 +229,7 @@ class LitModel(pl.LightningModule):
         self.loss_fn = args.get("loss_fn")
         self.df_valid = args.get("df_valid")  # for time_id pearson corr
         self.lr = args.get("lr")  # for time_id pearson corr
+        self.alpha = args.get("alpha")
 
     def forward(self, x, t):
         return self.model(x, t)
@@ -211,16 +238,25 @@ class LitModel(pl.LightningModule):
         return torch.optim.AdamW(self.parameters(), lr=self.lr)
 
     def training_step(self, batch, batch_idx):
-        xb, tb, yb = batch
-        logits = self.model(xb, tb)
-        loss = self.loss_fn(logits.flatten(), yb)
+        if self.alpha is None:
+            xb, tb, yb = batch
+            logits = self.model(xb, tb)
+            loss = self.loss_fn(logits.flatten(), yb, weights=None)
+        else: #mixup
+            xb, tb, yb_1, yb_2, lam = mixup_batch(batch, self.alpha)
+            # print(xb.shape, tb.shape)
+            logits = self.model(xb, tb)
+            loss = self.loss_fn(logits, yb_1, weights=(1-lam)) + self.loss_fn(logits, yb_2, weights=(lam))  
+
+
+
         self.log("train_loss", loss, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         xb, tb, yb = batch
         logits = self.model(xb, tb)
-        loss = self.loss_fn(logits.flatten(), yb)
+        loss = self.loss_fn(logits.flatten(), yb, weights=None)
         pearson = pearsonr(
             logits.flatten().detach().cpu().numpy(), yb.flatten().detach().cpu().numpy()
         )

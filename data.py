@@ -233,6 +233,8 @@ def get_win_features(features, win_dict, i, win_len=4):
         win_features = np.pad(
             win_features, ((win_len - win_features.shape[0], 0), (0, 0)), mode="mean"
         )
+    if win_len==1:
+        win_features = np.expand_dims(win_features, axis=0)
     return win_features
 
 def get_time_features(time_features, time_ids, time_map, i, time_win_len=1):
