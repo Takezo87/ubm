@@ -64,15 +64,14 @@ class MLP(nn.Module):
         # if self.autoencoder is not None:
         #     encoded = self.autoencoder.encoder(x)
         #     x = torch.cat([x, encoded])
-        if len(time.shape) == 2:
-            time = time.unsqueeze(-2)
-        # print(x.shape)
-        features = self.feature_extractor(time.permute(0, -1, -2))
         x = x.reshape(x.shape[0], -1)
-        features = features.reshape(features.shape[0], -1)
-        # print(features.shape)
-        # return features, x
-        x = torch.cat([x, features], 1)
+        if time.shape[1]>0:
+            if len(time.shape) == 2:
+                time = time.unsqueeze(-2)
+            # print(x.shape)
+            features = self.feature_extractor(time.permute(0, -1, -2))
+            features = features.reshape(features.shape[0], -1)
+            x = torch.cat([x, features], 1)
         # print(x.shape)
 
         return self.layers(x)
@@ -116,9 +115,14 @@ class MLP_Time(nn.Module):
         dim_autoencoder = 0 if self.autoencoder is None else autoencoder.bottleneck_dim
         self.feature_dim = feature_dim
         # self.feature_extractor = nn.Conv1d(c_in, self.feature_dim, kernel_size, padding='same')
-        self.feature_extractor = Extractor(c_in, self.feature_dim, kernel_size, kernel_size_pool)
+        if time_win_len>0:
+            self.feature_extractor = Extractor(c_in, self.feature_dim, kernel_size, kernel_size_pool)
 
-        dims_in = [c_in * seq_len + dim_autoencoder + self.feature_dim*(time_win_len//kernel_size_pool)] + n_hidden[:-1]
+            dims_in = [c_in * seq_len + dim_autoencoder + self.feature_dim*(time_win_len//kernel_size_pool)] + n_hidden[:-1]
+        else:
+            self.feature_extractor = None
+            dims_in = [c_in * seq_len + dim_autoencoder] + n_hidden[:-1]
+
         
         layers = [nn.BatchNorm1d(dims_in[0])]
 
@@ -132,15 +136,17 @@ class MLP_Time(nn.Module):
         # if self.autoencoder is not None:
         #     encoded = self.autoencoder.encoder(x)
         #     x = torch.cat([x, encoded])
-        if len(time.shape) == 2:
-            time = time.unsqueeze(-2)
-        # print(x.shape, time.shape)
-        features = self.feature_extractor(time.permute(0, -1, -2))
         x = x.reshape(x.shape[0], -1)
-        features = features.reshape(features.shape[0], -1)
+        # print(x.shape, time.shape)
+        if time.shape[1]>0:
+            if len(time.shape) == 2:
+                time = time.unsqueeze(-2)
+            # print(x.shape, time.shape)
+            features = self.feature_extractor(time.permute(0, -1, -2))
+            features = features.reshape(features.shape[0], -1)
+            x = torch.cat([x, features], 1)
         # print(features.shape)
         # return features, x
-        x = torch.cat([x, features], 1)
         # print(x.shape)
 
         return self.layers(x)
@@ -213,7 +219,10 @@ def mixup_batch(batch, alpha, device='cuda'):
     lam = distrib.sample((bs,)).to(device)
     batch_mixed = {}
     xb_mixed = torch.lerp(xb, xb[shuffle], weight=unsqueeze(lam, n=2))
-    tb_mixed = torch.lerp(tb, tb[shuffle], weight=unsqueeze(lam, n=2))
+    if tb.shape[1]>0:
+        tb_mixed = torch.lerp(tb, tb[shuffle], weight=unsqueeze(lam, n=2))
+    else:
+        tb_mixed = tb
     yb_1 = yb
     yb_2 = yb[shuffle]
     return xb_mixed, tb_mixed, yb_1, yb_2, lam

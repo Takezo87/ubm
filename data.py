@@ -238,6 +238,8 @@ def get_win_features(features, win_dict, i, win_len=4):
     return win_features
 
 def get_time_features(time_features, time_ids, time_map, i, time_win_len=1):
+    if time_win_len==0:
+        return np.array([], dtype='float32')
     time_idx = time_map[time_ids[i]]
     time_win_features = time_features[max(0, time_idx-time_win_len+1):time_idx+1]
     if time_win_features.shape[0] < time_win_len:
