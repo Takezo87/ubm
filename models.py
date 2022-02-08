@@ -215,12 +215,15 @@ def mixup_batch(batch, alpha, device='cuda'):
     xb, tb, yb = batch
     bs = yb.shape[0]
     shuffle = torch.randperm(bs).to(device)
-    distrib = Beta(alpha, alpha)
-    lam = distrib.sample((bs,)).to(device)
-    batch_mixed = {}
-    xb_mixed = torch.lerp(xb, xb[shuffle], weight=unsqueeze(lam, n=2))
+    # distrib = Beta(alpha, alpha)
+    # lam = distrib.sample((bs,)).to(device)
+
+    lam = np.random.beta(alpha, alpha)
+    # xb_mixed = torch.lerp(xb, xb[shuffle], weight=unsqueeze(lam, n=2))
+    xb_mixed = lam*xb + (1-lam)*xb[shuffle]
     if tb.shape[1]>0:
-        tb_mixed = torch.lerp(tb, tb[shuffle], weight=unsqueeze(lam, n=2))
+        tb_mixed = lam*tb + (1-lam)*tb[shuffle]
+        # tb_mixed = torch.lerp(tb, tb[shuffle], weight=unsqueeze(lam, n=2))
     else:
         tb_mixed = tb
     yb_1 = yb
@@ -250,12 +253,13 @@ class LitModel(pl.LightningModule):
         if self.alpha is None:
             xb, tb, yb = batch
             logits = self.model(xb, tb)
-            loss = self.loss_fn(logits.flatten(), yb, weights=None)
+            loss = self.loss_fn(logits.flatten(), yb)
         else: #mixup
             xb, tb, yb_1, yb_2, lam = mixup_batch(batch, self.alpha)
             # print(xb.shape, tb.shape)
             logits = self.model(xb, tb)
-            loss = self.loss_fn(logits, yb_1, weights=(1-lam)) + self.loss_fn(logits, yb_2, weights=(lam))  
+            loss = self.loss_fn(logits.flatten(), yb_1)*lam + self.loss_fn(logits.flatten(), yb_2)*(1-lam) 
+            # loss = self.loss_fn(logits, yb_1, weights=(1-lam)) + self.loss_fn(logits, yb_2, weights=(lam))  
 
 
 
@@ -265,7 +269,7 @@ class LitModel(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         xb, tb, yb = batch
         logits = self.model(xb, tb)
-        loss = self.loss_fn(logits.flatten(), yb, weights=None)
+        loss = self.loss_fn(logits.flatten(), yb)
         pearson = pearsonr(
             logits.flatten().detach().cpu().numpy(), yb.flatten().detach().cpu().numpy()
         )
