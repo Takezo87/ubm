@@ -107,7 +107,8 @@ class MLP_Time(nn.Module):
         autoencoder=None,
         feature_dim = 64,
         kernel_size=3,
-        kernel_size_pool=1
+        kernel_size_pool=1,
+        layer_bn=True,
     ):
 
         super().__init__()
@@ -127,7 +128,8 @@ class MLP_Time(nn.Module):
         layers = [nn.BatchNorm1d(dims_in[0])]
 
         for n_in, n_out, drop in zip(dims_in, n_hidden, dropout):
-            layers.append(LinBnDrop(n_in, n_out, p=drop, act=act, lin_first=True))
+            layers.append(LinBnDrop(n_in, n_out, p=drop, act=act, lin_first=True,
+                bn=layer_bn))
         layers.append(nn.Linear(n_hidden[-1], c_out))
         self.layers = nn.Sequential(*layers)
 

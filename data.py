@@ -321,8 +321,12 @@ class WinDM(pl.LightningDataModule):
             self.win_dict = window_dict(df, self.win_len)
         else:
             self.win_dict = {k:k for k in df.index}
-        self.train_idcs = df.loc[df.time_id <= self.split_time_id].index
-        self.val_idcs = df.loc[df.time_id > self.split_time_id].index
+        if self.split_time_id == -1:
+            self.train_idcs = df.index
+            self.val_idcs = df.loc[df.time_id==df.time_id.max()].index
+        else:
+            self.train_idcs = df.loc[df.time_id <= self.split_time_id].index
+            self.val_idcs = df.loc[df.time_id > self.split_time_id].index
         self.test_idcs = self.val_idcs
 
         # time aggregate mapping
