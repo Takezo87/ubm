@@ -25,6 +25,7 @@ np.random.seed(42)
 torch.manual_seed(42)
 
 PROJECT='ubm'
+MODEL_PATH = './models/'
 
 
 # def _import_class(module_and_class_name: str) -> type:
@@ -49,6 +50,7 @@ def _setup_parser():
     
     parser.add_argument("--wandb", action="store_true", default=False)
     parser.add_argument("--project", type=str, default=PROJECT)
+    parser.add_argument("--model_path" ,type=str, default=MODEL_PATH)
 
     # Basic arguments
     parser.add_argument("--mixup", type=float, default=0)
@@ -110,13 +112,13 @@ def main():
     model = MLP_Time(args.num_features, 1, 0, n_hidden=args.n_hidden,
             dropout=args.dropout, layer_bn=args.layer_bn)
     print(model)
-    sys.exit()
+    # sys.exit()
     lm = LitModel(model, args)
 
     logger=pl.loggers.WandbLogger(project=args.project)
     logger.log_hyperparams(vars(args))
-    model_checkpoint_callback_last = pl.callbacks.ModelCheckpoint(
-        filename="last-{epoch:03d}-{val_loss:.3f}-{top5_double:.3f}", monitor=None
+    model_checkpoint_callback_last = pl.callbacks.ModelCheckpoint(dirpath=args.model_path,
+        filename="last-{epoch:03d}-{val_loss:.3f}-{pearson:.3f}", monitor=None
         )
     callbacks = [model_checkpoint_callback_last]
 
