@@ -24,11 +24,12 @@ def idx_cols():
     return col_subset
 
 
-def load_df(idx_cols, feature_cols, target="target", fn="train_low_mem.parquet", 
-        small=False):
+def load_df(
+    idx_cols, feature_cols, target="target", fn="train_low_mem.parquet", small=False
+):
     train = pd.read_parquet(fn, columns=idx_cols + feature_cols + ["target"])
     if small:
-        train = train.loc[train.investment_id<=100]
+        train = train.loc[train.investment_id <= 100]
         train.reset_index(inplace=True, drop=True)
     return train
 
@@ -40,7 +41,6 @@ def window_dict(df, win_len=4):
         for i, idx in enumerate(group):
             d[idx] = np.array(group[max(0, i - win_len + 1) : i + 1])
     return d
-
 
 
 def prepend_slice(ids, df, win_len):
@@ -227,26 +227,33 @@ class WinDS(Dataset):
     def __len__(self):
         return len(self.idcs)
 
+
 def get_win_features(features, win_dict, i, win_len=4):
     win_features = features[win_dict[i]]
     if win_features.shape[0] < win_len:
         win_features = np.pad(
             win_features, ((win_len - win_features.shape[0], 0), (0, 0)), mode="mean"
         )
-    if win_len==1:
+    if win_len == 1:
         win_features = np.expand_dims(win_features, axis=0)
     return win_features
 
+
 def get_time_features(time_features, time_ids, time_map, i, time_win_len=1):
-    if time_win_len==0:
-        return np.array([], dtype='float32')
+    if time_win_len == 0:
+        return np.array([], dtype="float32")
     time_idx = time_map[time_ids[i]]
-    time_win_features = time_features[max(0, time_idx-time_win_len+1):time_idx+1]
+    time_win_features = time_features[
+        max(0, time_idx - time_win_len + 1) : time_idx + 1
+    ]
     if time_win_features.shape[0] < time_win_len:
         time_win_features = np.pad(
-            time_win_features, ((time_win_len - time_win_features.shape[0], 0), (0, 0)), mode="mean"
+            time_win_features,
+            ((time_win_len - time_win_features.shape[0], 0), (0, 0)),
+            mode="mean",
         )
     return time_win_features
+
 
 class TimeDS(Dataset):
     def __init__(
@@ -262,19 +269,28 @@ class TimeDS(Dataset):
         time_win_len=1,
         **kwargs,
     ):
-        self.features, self.time_features, self.targets = features, time_features, targets
+        self.features, self.time_features, self.targets = (
+            features,
+            time_features,
+            targets,
+        )
         self.idcs = idcs
         self.win_dict, self.win_len = win_dict, win_len
-        self.time_ids, self.time_map, self.time_win_len = time_ids, time_map, time_win_len
+        self.time_ids, self.time_map, self.time_win_len = (
+            time_ids,
+            time_map,
+            time_win_len,
+        )
 
     def __getitem__(self, i):
         df_idx = self.idcs[i]
         # print(df_idx)
         features = get_win_features(self.features, self.win_dict, df_idx, self.win_len)
-        #time_step aggregated features
+        # time_step aggregated features
 
-        time_features = get_time_features(self.time_features, self.time_ids, self.time_map,
-                df_idx, self.time_win_len)
+        time_features = get_time_features(
+            self.time_features, self.time_ids, self.time_map, df_idx, self.time_win_len
+        )
         # print(features)
         # print(time_features)
         # features = np.concatenate([features, time_features])
@@ -288,42 +304,55 @@ class TimeDS(Dataset):
     def __len__(self):
         return len(self.idcs)
 
+
 def default_args():
-    args = argparse.Namespace(df_path='train_low_mem.parquet', win_len=1, time_win_len=4, dset_type='time_ds', num_features=20, split_time_id=1000, batch_size=256, num_workers=0, small_df=True)
+    args = argparse.Namespace(
+        df_path="train_low_mem.parquet",
+        win_len=1,
+        time_win_len=4,
+        dset_type="time_ds",
+        num_features=20,
+        split_time_id=1000,
+        batch_size=256,
+        num_workers=0,
+        small_df=True,
+    )
     return args
 
+
 class WinDM(pl.LightningDataModule):
-    def __init__(self, args:argparse.Namespace):
+    def __init__(self, args: argparse.Namespace):
         super().__init__()
         args = vars(args) if args is not None else None
 
-        self.num_features = args.get('num_features')
-        self.df_path = args.get('df_path')
-        self.win_len = args.get('win_len')
-        self.time_win_len = args.get('time_win_len')
-        self.dset_type = args.get('dset_type')
-        self.split_time_id = args.get('split_time_id')
-        self.batch_size = args.get('batch_size')
-        self.num_workers = args.get('num_workers')
-        self.small_df = args.get('small_df')
-
+        self.num_features = args.get("num_features")
+        self.df_path = args.get("df_path")
+        self.win_len = args.get("win_len")
+        self.time_win_len = args.get("time_win_len")
+        self.dset_type = args.get("dset_type")
+        self.split_time_id = args.get("split_time_id")
+        self.batch_size = args.get("batch_size")
+        self.num_workers = args.get("num_workers")
+        self.small_df = args.get("small_df")
 
     def setup(self):
         self.feature_cols = feature_cols(self.num_features)
-        df = load_df(idx_cols(), self.feature_cols, fn=self.df_path, small=self.small_df)
+        df = load_df(
+            idx_cols(), self.feature_cols, fn=self.df_path, small=self.small_df
+        )
         # self.df = df
-        self.features = df[self.feature_cols].values.astype('float32')
-        if 'target' in df.columns:
+        self.features = df[self.feature_cols].values.astype("float32")
+        if "target" in df.columns:
             self.targets = df["target"].values
         else:
             self.targets = None
-        if self.win_len>1:
+        if self.win_len > 1:
             self.win_dict = window_dict(df, self.win_len)
         else:
-            self.win_dict = {k:k for k in df.index}
+            self.win_dict = {k: k for k in df.index}
         if self.split_time_id == -1:
             self.train_idcs = df.index
-            self.val_idcs = df.loc[df.time_id==df.time_id.max()].index
+            self.val_idcs = df.loc[df.time_id == df.time_id.max()].index
         else:
             self.train_idcs = df.loc[df.time_id <= self.split_time_id].index
             self.val_idcs = df.loc[df.time_id > self.split_time_id].index
@@ -331,17 +360,16 @@ class WinDM(pl.LightningDataModule):
 
         # time aggregate mapping
         print(self.dset_type)
-        if self.dset_type == 'time_ds': 
-            print('time ds')
+        if self.dset_type == "time_ds":
+            print("time ds")
             time_df = df.groupby("time_id")[self.feature_cols].mean()
             self.time_ids = df.time_id.values
             self.time_map = {k: v for v, k in enumerate(df.time_id.unique())}
             self.time_features = time_df.astype("float32").values
         else:
             self.time_ids, self.time_map, self.time_features = None, None, None
-        
 
-        dset_cls = TimeDS if self.dset_type=='time_ds' else WinDS
+        dset_cls = TimeDS if self.dset_type == "time_ds" else WinDS
         self.train_dset = dset_cls(
             self.features,
             self.time_features,
@@ -395,6 +423,7 @@ class WinDM(pl.LightningDataModule):
             pin_memory=False,
             num_workers=self.num_workers,
         )
+
     def test_dataloader(self):
         return DataLoader(
             self.test_dset,
@@ -403,3 +432,61 @@ class WinDM(pl.LightningDataModule):
             pin_memory=False,
             num_workers=self.num_workers,
         )
+
+    @staticmethod
+    def add_to_argparse(parser):
+        parser.add_argument(
+            "--batch_size",
+            type=int,
+            default=256,
+            help="Number of examples to operate on per forward step.",
+        )
+        parser.add_argument(
+            "--num_workers",
+            type=int,
+            default=0,
+            help="Number of additional processes to load data.",
+        )
+        parser.add_argument(
+            "--df_path",
+            type=str,
+            default='train_low_mem.parquet',
+            help="training dataframe",
+        )
+        parser.add_argument(
+            "--num_features", type=int, default=20, help="number of features"
+        )
+        parser.add_argument(
+            "--win_len", type=int, default=1, help="length of considered investment_id window"
+        )
+        parser.add_argument(
+            "--time_win_len", type=int, default=0, help="length of considered time_id window"
+        )
+        parser.add_argument(
+            "--split_time_id", type=int, default=1100, help="time_id split point for validation, -1 for full data")
+        parser.add_argument(
+                "--small_df", dest='small_df', default=False, action="store_true"
+                )
+        parser.add_argument(
+            "--n_folds", type=int, default=1, help="end index of test set"
+        )
+        parser.add_argument(
+            "--fold", type=int, default=1, help="end index of test set"
+        )
+        parser.add_argument(
+            "--dset_type", type=str, default='time_ds', help="dataset type"
+        )
+        # parser.add_argument(
+        #     "--augments", type=str, nargs='+', action='append',
+        #     default=AUGMENTS, help='tfms for the groups list of lists, use like --augments noise scale --augments all --augments integer_noise --augments all'
+        # )
+        parser.add_argument(
+            "--data_dir",
+            type=str,
+            default='./',
+            help="directory of the input dataframe",
+        )
+        parser.add_argument(
+            "--log_dir", type=str, default='./lightning_logs', help="directory of the log files"
+        )
+        return parser

@@ -14,6 +14,8 @@ from data import *
 
 # WIN_LEN = 4
 # NUM_FEATURES = 20
+LOSS = F.mse_loss
+LR = 1e-3
 
 
 class LinBnDrop(nn.Sequential):
@@ -102,7 +104,7 @@ class MLP_Time(nn.Module):
         time_win_len,
         c_out=1,
         n_hidden=[256, 128, 64],
-        dropout=[0.2, 0.2, 0.2, 0.2],
+        dropout=[0.2, 0.2, 0.2],
         act=nn.ReLU(),
         autoencoder=None,
         feature_dim = 64,
@@ -112,6 +114,7 @@ class MLP_Time(nn.Module):
     ):
 
         super().__init__()
+        assert len(n_hidden)==len(dropout)
         self.autoencoder = autoencoder
         dim_autoencoder = 0 if self.autoencoder is None else autoencoder.bottleneck_dim
         self.feature_dim = feature_dim
@@ -244,6 +247,7 @@ class LitModel(pl.LightningModule):
         self.df_valid = args.get("df_valid")  # for time_id pearson corr
         self.lr = args.get("lr")  # for time_id pearson corr
         self.alpha = args.get("alpha")
+        print(self.alpha)
 
     def forward(self, x, t):
         return self.model(x, t)
@@ -293,6 +297,24 @@ class LitModel(pl.LightningModule):
 
                 self.log("pearson_full", metric, prog_bar=True)
 
+    @staticmethod
+    def add_to_argparse(parser):
+        parser.add_argument("--optimizer", type=str, default=torch.optim.AdamW, help="optimizer class from torch.optim")
+        parser.add_argument("--lr", type=float, default=LR)
+        parser.add_argument("--weight_decay", type=float, default=3e-2)
+        parser.add_argument("--alpha", type=float)
+        # parser.add_argument("--one_cycle_max_lr", type=float, default=None)
+        # parser.add_argument("--one_cycle_total_steps", type=int, default=ONE_CYCLE_TOTAL_STEPS)
+        # parser.add_argument("--one_cycle_epochs", type=int, default=1)
+        # parser.add_argument("--one_cycle_steps_per_epoch", type=int, default=10)
+        parser.add_argument("--one_cycle_pct_start", type=float, default=.3)
+        parser.add_argument("--loss_fn", type=str, default=LOSS, help="loss function from torch.nn.functional")
+        parser.add_argument("--scheduler", type=str, default='one_cycle', help='one_cycle|mult_step use flat lr scheduler with one 10x decrease after 80 epochs')
+        parser.add_argument("--n_epochs", type=int, default=50)
+        parser.add_argument("--n_hidden", type=int, nargs="+", default=[512, 256, 128])
+        parser.add_argument("--dropout", type=float, nargs="+", default=[.2, .2, .2])
+        parser.add_argument("--layer_bn", dest='layer_bn', default=False, action='store_true')
+        return parser
     # def predict_step(self, batch, batch_idx, dataloader_idx=None):
     #     xb, yb = batch
     #     return self(xb).squeeze()
