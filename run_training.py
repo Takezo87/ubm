@@ -94,7 +94,7 @@ def main():
 
     Sample command:
     ```
-    python training/run_experiment.py --one_cycle_max_lr=3e-5 --wandb --loss=double_loss_squared --config_id=bets_ts_basic_10c_2y_ah_opp --gpus=1 --num_workers=4 --magnitude  0.2 0.2 0.2 0.2 --batch_size=512 --accumulate_grad_batches=4 --one_cycle_total_steps=100 --weight_decay=3e-2 --n_transforms 0 0 0 3 --augments all --augments all --augments all --augments all --data_class=TSBasic --model_class=TSTMult
+    python run_training.py
     ```
     """
     parser = _setup_parser()
@@ -113,6 +113,8 @@ def main():
             dropout=args.dropout, layer_bn=args.layer_bn)
     print(model)
     # sys.exit()
+    steps_per_epoch = len(dm.train_dataloader())
+    args.steps_per_epoch=steps_per_epoch
     lm = LitModel(model, args)
 
     logger=pl.loggers.WandbLogger(project=args.project)

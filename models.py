@@ -305,6 +305,7 @@ class LitModel(pl.LightningModule):
         scheduler = self.lr_schedulers()
         # print(scheduler.get_last_lr())
 
+        self.log("lr", scheduler.get_last_lr()[0], on_step=True)
         self.log("train_loss", loss, on_epoch=True)
         return loss
 
