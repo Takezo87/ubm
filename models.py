@@ -203,7 +203,8 @@ def pearson_coef(data):
 
 
 def default_lm_args():
-    return argparse.Namespace(loss_fn=weighted_mse_loss, lr=1e-3, alpha=.4)
+    return argparse.Namespace(loss_fn=F.mse_loss, lr=1e-3, alpha=.4, 
+            n_epochs=10)
 
 
 def weighted_mse_loss(logits, yb, weights):
@@ -240,6 +241,7 @@ def mixup_batch(batch, alpha, device='cuda'):
 class LitModel(pl.LightningModule):
     def __init__(self, model, args: argparse.Namespace):
         super().__init__()
+        self.save_hyperparameters(ignore=['loss_fn'])
         args = vars(args) if args is not None else None
         # print(args)
         self.model = model
@@ -247,13 +249,46 @@ class LitModel(pl.LightningModule):
         self.df_valid = args.get("df_valid")  # for time_id pearson corr
         self.lr = args.get("lr")  # for time_id pearson corr
         self.alpha = args.get("alpha")
+        #for schedulers
+        self.n_epochs = args.get('n_epochs')
+        self.steps_per_epoch = args.get('steps_per_epoch')
+        self.n_restarts = 2
         print(self.alpha)
 
     def forward(self, x, t):
         return self.model(x, t)
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer, self.steps_per_epoch*self.n_epochs//self.n_restarts)
+        
+        # scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        #     optimizer=optimizer, max_lr=self.lr, epochs=self.n_epochs, steps_per_epoch=self.steps_per_epoch, pct_start=self.one_cycle_pct_start
+        #     # steps_per_epoch=15, epochs=10
+        #     )
+        # scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        #     optimizer=optimizer, max_lr=self.lr, epochs=self.n_epochs, steps_per_epoch=self.steps_per_epoch, pct_start=self.one_cycle_pct_start
+            # steps_per_epoch=15, epochs=10
+        # scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        #     optimizer=optimizer, max_lr=self.lr,
+        #     # epochs=self.n_epochs, steps_per_epoch=self.steps_per_epoch,
+        #     total_steps = self.n_epochs*self.steps_per_epoch,
+        #     pct_start=self.one_cycle_pct_start
+        #     # steps_per_epoch=15, epochs=10
+        #     )
+        # scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        #     optimizer=optimizer, max_lr=self.one_cycle_max_lr,
+        #      total_steps=self.one_cycle_total_steps, pct_start=self.one_cycle_pct_start
+        #     # steps_per_epoch=15, epochs=10
+        #     )
+        lr_dict = {"scheduler": scheduler,
+                "interval":"step", "monitor": "val_loss", "strict":False}
+        print(lr_dict)
+        # print(vars(optimizer))
+        print(vars(scheduler))
+        print(lr_dict)
+        return {"optimizer": optimizer, 'lr_scheduler': lr_dict}
 
     def training_step(self, batch, batch_idx):
         if self.alpha is None:
@@ -267,7 +302,8 @@ class LitModel(pl.LightningModule):
             loss = self.loss_fn(logits.flatten(), yb_1)*lam + self.loss_fn(logits.flatten(), yb_2)*(1-lam) 
             # loss = self.loss_fn(logits, yb_1, weights=(1-lam)) + self.loss_fn(logits, yb_2, weights=(lam))  
 
-
+        scheduler = self.lr_schedulers()
+        # print(scheduler.get_last_lr())
 
         self.log("train_loss", loss, on_epoch=True)
         return loss
