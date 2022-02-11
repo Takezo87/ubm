@@ -106,7 +106,7 @@ class MLP_Time(nn.Module):
         n_hidden=[256, 128, 64],
         dropout=[0.2, 0.2, 0.2],
         act=nn.ReLU(),
-        autoencoder=None,
+        autoencoder=False,
         feature_dim = 64,
         kernel_size=3,
         kernel_size_pool=1,
@@ -115,8 +115,11 @@ class MLP_Time(nn.Module):
 
         super().__init__()
         assert len(n_hidden)==len(dropout)
-        self.autoencoder = autoencoder
-        dim_autoencoder = 0 if self.autoencoder is None else autoencoder.bottleneck_dim
+        if autoencoder is True:
+            self.autoencoder = AutoEncoder(c_in, seq_len, time_win_len)
+        else:
+            self.autoencoder = None
+        dim_autoencoder = 0 if self.autoencoder is None else self.autoencoder.bottleneck_dim
         self.feature_dim = feature_dim
         # self.feature_extractor = nn.Conv1d(c_in, self.feature_dim, kernel_size, padding='same')
         if time_win_len>0:
@@ -138,9 +141,10 @@ class MLP_Time(nn.Module):
 
     def forward(self, x, time):
         # print(x)
-        # if self.autoencoder is not None:
-        #     encoded = self.autoencoder.encoder(x)
-        #     x = torch.cat([x, encoded])
+        if self.autoencoder is not None:
+            encoded = self.autoencoder.encoder(x, time)
+            # print(x.shape, encoded.unsqueeze(-2).shape)
+            x = torch.cat([x, encoded.unsqueeze(-2)], dim=-1)
         x = x.reshape(x.shape[0], -1)
         # print(x.shape, time.shape)
         if time.shape[1]>0:
@@ -161,17 +165,21 @@ class AutoEncoder(nn.Module):
         self,
         c_in,
         seq_len,
+        time_win_len,
         noise=0.2,
         encoder_layers=[256, 128],
         decoder_layers=[128, 256],
+        dropout = [.2, .1],
         bottleneck_dim=64,
     ):
 
         super().__init__()
         self.noise = noise
         self.bottleneck_dim = bottleneck_dim
-        self.encoder = MLP(c_in, seq_len, n_hidden=encoder_layers, c_out=bottleneck_dim)
-        self.decoder = MLP(bottleneck_dim, seq_len, n_hidden=decoder_layers, c_out=c_in)
+        self.encoder = MLP_Time(c_in, seq_len, time_win_len, n_hidden=encoder_layers, c_out=bottleneck_dim, 
+                dropout=dropout)
+        self.decoder = MLP_Time(bottleneck_dim, seq_len, time_win_len, n_hidden=decoder_layers, c_out=c_in,
+                dropout=dropout)
 
     def forward(self, x):
         noise = torch.randn_like(x) * self.noise
@@ -250,7 +258,7 @@ class LitModel(pl.LightningModule):
         self.lr = args.get("lr")  # for time_id pearson corr
         self.alpha = args.get("alpha")
         #for schedulers
-        self.n_epochs = args.get('n_epochs')
+        self.max_epochs = args.get('max_epochs')
         self.steps_per_epoch = args.get('steps_per_epoch')
         self.n_restarts = 2
         print(self.alpha)
@@ -260,8 +268,12 @@ class LitModel(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+
+        if self.steps_per_epoch is None:
+            return optimizer
+
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                optimizer, self.steps_per_epoch*self.n_epochs//self.n_restarts)
+                optimizer, self.steps_per_epoch*self.max_epochs//self.n_restarts)
         
         # scheduler = torch.optim.lr_scheduler.OneCycleLR(
         #     optimizer=optimizer, max_lr=self.lr, epochs=self.n_epochs, steps_per_epoch=self.steps_per_epoch, pct_start=self.one_cycle_pct_start
@@ -301,11 +313,9 @@ class LitModel(pl.LightningModule):
             logits = self.model(xb, tb)
             loss = self.loss_fn(logits.flatten(), yb_1)*lam + self.loss_fn(logits.flatten(), yb_2)*(1-lam) 
             # loss = self.loss_fn(logits, yb_1, weights=(1-lam)) + self.loss_fn(logits, yb_2, weights=(lam))  
-
-        scheduler = self.lr_schedulers()
-        # print(scheduler.get_last_lr())
-
-        self.log("lr", scheduler.get_last_lr()[0], on_step=True)
+        if self.lr_schedulers() is not None:
+            scheduler = self.lr_schedulers()
+            self.log("lr", scheduler.get_last_lr()[0], on_step=True)
         self.log("train_loss", loss, on_epoch=True)
         return loss
 
@@ -347,10 +357,11 @@ class LitModel(pl.LightningModule):
         parser.add_argument("--one_cycle_pct_start", type=float, default=.3)
         parser.add_argument("--loss_fn", type=str, default=LOSS, help="loss function from torch.nn.functional")
         parser.add_argument("--scheduler", type=str, default='one_cycle', help='one_cycle|mult_step use flat lr scheduler with one 10x decrease after 80 epochs')
-        parser.add_argument("--n_epochs", type=int, default=50)
+        parser.add_argument("--n_epochs", type=int, default=10)
         parser.add_argument("--n_hidden", type=int, nargs="+", default=[512, 256, 128])
         parser.add_argument("--dropout", type=float, nargs="+", default=[.2, .2, .2])
         parser.add_argument("--layer_bn", dest='layer_bn', default=False, action='store_true')
+        parser.add_argument("--autoencoder", dest='autoencoder', default=False, action='store_true')
         return parser
     # def predict_step(self, batch, batch_idx, dataloader_idx=None):
     #     xb, yb = batch

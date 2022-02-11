@@ -110,7 +110,7 @@ def main():
     dm = WinDM(args)
     dm.setup()
     model = MLP_Time(args.num_features, 1, 0, n_hidden=args.n_hidden,
-            dropout=args.dropout, layer_bn=args.layer_bn)
+            dropout=args.dropout, layer_bn=args.layer_bn, autoencoder=args.autoencoder)
     print(model)
     # sys.exit()
     steps_per_epoch = len(dm.train_dataloader())

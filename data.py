@@ -309,7 +309,7 @@ def default_args():
     args = argparse.Namespace(
         df_path="train_low_mem.parquet",
         win_len=1,
-        time_win_len=4,
+        time_win_len=0,
         dset_type="time_ds",
         num_features=20,
         split_time_id=1000,
