@@ -141,6 +141,7 @@ class MLP_Time(nn.Module):
 
     def forward(self, x, time):
         # print(x)
+        x_in = x
         if self.autoencoder is not None:
             encoded = self.autoencoder.encoder(x, time)
             # print(x.shape, encoded.unsqueeze(-2).shape)
@@ -157,6 +158,8 @@ class MLP_Time(nn.Module):
         # print(features.shape)
         # return features, x
         # print(x.shape)
+        if self.autoencoder is not None:
+            return self.layers(x), self.autoencoder(x_in, time)  
 
         return self.layers(x)
 
@@ -181,12 +184,12 @@ class AutoEncoder(nn.Module):
         self.decoder = MLP_Time(bottleneck_dim, seq_len, time_win_len, n_hidden=decoder_layers, c_out=c_in,
                 dropout=dropout)
 
-    def forward(self, x):
+    def forward(self, x, time):
         noise = torch.randn_like(x) * self.noise
         x = x * noise
-        encoded = self.encoder(x)
+        encoded = self.encoder(x, time)
         # print(encoded.shape)
-        decoded = self.decoder(encoded)
+        decoded = self.decoder(encoded, time)
         return decoded
 
 
@@ -260,8 +263,8 @@ class LitModel(pl.LightningModule):
         #for schedulers
         self.max_epochs = args.get('max_epochs')
         self.steps_per_epoch = args.get('steps_per_epoch')
-        self.n_restarts = 2
-        print(self.alpha)
+        self.n_restarts = args.get('n_restarts', 2)
+        print(self.alpha, self.steps_per_epoch)
 
     def forward(self, x, t):
         return self.model(x, t)
@@ -350,6 +353,7 @@ class LitModel(pl.LightningModule):
         parser.add_argument("--lr", type=float, default=LR)
         parser.add_argument("--weight_decay", type=float, default=3e-2)
         parser.add_argument("--alpha", type=float)
+        parser.add_argument("--n_restarts", type=int, default=2)
         # parser.add_argument("--one_cycle_max_lr", type=float, default=None)
         # parser.add_argument("--one_cycle_total_steps", type=int, default=ONE_CYCLE_TOTAL_STEPS)
         # parser.add_argument("--one_cycle_epochs", type=int, default=1)

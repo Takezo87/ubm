@@ -100,7 +100,7 @@ def main():
     parser = _setup_parser()
     args = parser.parse_args()
     print('args:')
-    print(args)
+    # print(args)
     print('args.data_class:')
     print(args.win_len)
     print(args.time_win_len)
@@ -115,6 +115,7 @@ def main():
     # sys.exit()
     steps_per_epoch = len(dm.train_dataloader())
     args.steps_per_epoch=steps_per_epoch
+    print(args.steps_per_epoch)
     lm = LitModel(model, args)
 
     logger=pl.loggers.WandbLogger(project=args.project)

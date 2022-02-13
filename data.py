@@ -316,6 +316,7 @@ def default_args():
         batch_size=256,
         num_workers=0,
         small_df=True,
+        pin_memory=False,
     )
     return args
 
@@ -334,6 +335,7 @@ class WinDM(pl.LightningDataModule):
         self.batch_size = args.get("batch_size")
         self.num_workers = args.get("num_workers")
         self.small_df = args.get("small_df")
+        self.pin_memory = args.get('pin_memory', False)
 
     def setup(self):
         self.feature_cols = feature_cols(self.num_features)
@@ -411,7 +413,7 @@ class WinDM(pl.LightningDataModule):
             self.train_dset,
             batch_size=self.batch_size,
             shuffle=True,
-            pin_memory=False,
+            pin_memory=self.pin_memory,
             num_workers=self.num_workers,
         )
 
@@ -420,7 +422,7 @@ class WinDM(pl.LightningDataModule):
             self.valid_dset,
             batch_size=self.batch_size,
             shuffle=False,
-            pin_memory=False,
+            pin_memory=self.pin_memory,
             num_workers=self.num_workers,
         )
 
@@ -429,7 +431,7 @@ class WinDM(pl.LightningDataModule):
             self.test_dset,
             batch_size=self.batch_size,
             shuffle=False,
-            pin_memory=False,
+            pin_memory=self.pin_memory,
             num_workers=self.num_workers,
         )
 
@@ -476,6 +478,9 @@ class WinDM(pl.LightningDataModule):
         parser.add_argument(
             "--dset_type", type=str, default='time_ds', help="dataset type"
         )
+        parser.add_argument(
+                "--pin_memory", dest='pin_memory', default=False, action="store_true"
+                )
         # parser.add_argument(
         #     "--augments", type=str, nargs='+', action='append',
         #     default=AUGMENTS, help='tfms for the groups list of lists, use like --augments noise scale --augments all --augments integer_noise --augments all'
