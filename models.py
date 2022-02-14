@@ -105,7 +105,7 @@ class MLP_Time(nn.Module):
         c_out=1,
         n_hidden=[256, 128, 64],
         dropout=[0.2, 0.2, 0.2],
-        act=nn.ReLU(),
+        act='relu',
         autoencoder=False,
         feature_dim = 64,
         kernel_size=3,
@@ -114,6 +114,12 @@ class MLP_Time(nn.Module):
     ):
 
         super().__init__()
+        if act=='relu':
+            act_fn=nn.ReLU()
+        elif act=='gelu':
+            act_fn=nn.GELU()
+        else:
+            act_fn=nn.GELU()
         assert len(n_hidden)==len(dropout)
         if autoencoder is True:
             self.autoencoder = AutoEncoder(c_in, seq_len, time_win_len)
@@ -134,7 +140,7 @@ class MLP_Time(nn.Module):
         layers = [nn.BatchNorm1d(dims_in[0])]
 
         for n_in, n_out, drop in zip(dims_in, n_hidden, dropout):
-            layers.append(LinBnDrop(n_in, n_out, p=drop, act=act, lin_first=True,
+            layers.append(LinBnDrop(n_in, n_out, p=drop, act=act_fn, lin_first=True,
                 bn=layer_bn))
         layers.append(nn.Linear(n_hidden[-1], c_out))
         self.layers = nn.Sequential(*layers)
@@ -299,7 +305,6 @@ class LitModel(pl.LightningModule):
         #     )
         lr_dict = {"scheduler": scheduler,
                 "interval":"step", "monitor": "val_loss", "strict":False}
-        print(lr_dict)
         # print(vars(optimizer))
         print(vars(scheduler))
         print(lr_dict)
@@ -365,6 +370,7 @@ class LitModel(pl.LightningModule):
         parser.add_argument("--n_hidden", type=int, nargs="+", default=[512, 256, 128])
         parser.add_argument("--dropout", type=float, nargs="+", default=[.2, .2, .2])
         parser.add_argument("--layer_bn", dest='layer_bn', default=False, action='store_true')
+        parser.add_argument("--act", type=str, default='relu')
         parser.add_argument("--autoencoder", dest='autoencoder', default=False, action='store_true')
         return parser
     # def predict_step(self, batch, batch_idx, dataloader_idx=None):

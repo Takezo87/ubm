@@ -110,7 +110,8 @@ def main():
     dm = WinDM(args)
     dm.setup()
     model = MLP_Time(args.num_features, 1, 0, n_hidden=args.n_hidden,
-            dropout=args.dropout, layer_bn=args.layer_bn, autoencoder=args.autoencoder)
+            dropout=args.dropout, layer_bn=args.layer_bn, autoencoder=args.autoencoder,
+            act=args.act)
     print(model)
     # sys.exit()
     steps_per_epoch = len(dm.train_dataloader())
@@ -128,11 +129,6 @@ def main():
     trainer = pl.Trainer.from_argparse_args(args, callbacks=callbacks, logger=logger,
          weights_save_path='./wandb/models')
     trainer.fit(lm, dm)
-
-
-
-
-
 
 if __name__ == "__main__":
     main()
